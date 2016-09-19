@@ -1,3 +1,2 @@
 [run]
 omit = cdttable/test_util.py
-concurrency = multiprocessing

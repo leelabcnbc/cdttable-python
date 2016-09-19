@@ -42,7 +42,8 @@ class MyTestCase(unittest.TestCase):
                 'margin_before': margin_before,
                 'margin_after': margin_after,
             }
-            split_result = split_events(event_data, event_splitting_params, debug=True)
+            # use single thread to make code coverage detection easier.
+            split_result = split_events(event_data, event_splitting_params, debug=True, n_jobs=1)
             # ok. let's test the result.
             self.assertEqual((num_trial,), split_result['event_codes'].shape)
             for code1, code2 in zip(test_data['event_codes'], split_result['event_codes']):

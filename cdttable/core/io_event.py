@@ -97,7 +97,7 @@ def _split_events_per_trial(t_idx, codes: np.ndarray, times: np.ndarray, params:
     }
 
 
-def split_events(event_data: dict, event_splitting_params: dict, debug=False) -> dict:
+def split_events(event_data: dict, event_splitting_params: dict, n_jobs=-1, debug=False) -> dict:
     """extract event codes according to event splitting params.
     basically, this code replicates half the of `+cdttable/import_one_trial.m` in the original matlab package.
     the other half should go to the splitter.
@@ -122,7 +122,7 @@ def split_events(event_data: dict, event_splitting_params: dict, debug=False) ->
     assert n_trial == len(event_data['event_times'])
 
     # no memmaping, since trials are usually short.
-    pool = Parallel(n_jobs=-1, max_nbytes=None)
+    pool = Parallel(n_jobs=n_jobs, max_nbytes=None)
     split_result = pool(
         delayed(_split_events_per_trial)(t_idx, codes, times, event_splitting_params) for t_idx, (codes, times) in
         enumerate(zip(event_data['event_codes'],
