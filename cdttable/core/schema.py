@@ -1,52 +1,94 @@
 import jsonschema
 import jsl
 import json
+from jsonschema import FormatChecker, Draft4Validator
 
-_time_aware_data_types = ('time_series_1d',  # LFP
-                          'point_process_1d',  # spike
-                          )
 
-_time_unaware_fixed = ('fixed',  # a fixed bunch of numbers for each trial/location, with no notion of time
-                       )
+def validate(schema, record):
+    jsonschema.validate(instance=record, schema=schema, format_checker=FormatChecker(),
+                        cls=Draft4Validator)
 
-_time_unaware_flexible = ('variable_1d',  # a variable bunch of numbers for each trial/location, with no notion of time.
-                          )
+    return True
 
-_time_unaware_data_types = sum([_time_unaware_fixed,
-                                _time_unaware_flexible],
-                               ())
-_data_types_all = _time_aware_data_types + _time_unaware_data_types
+
+_data_types = ('fixed',
+               'variable_1d',
+               )
+
+_valid_column_name_pattern = '^[0-9a-z_\\-]+$'
+
+_valid_column_name_field = jsl.StringField(pattern=_valid_column_name_pattern, required=True)
 
 
 class DataMetaJSLBase(jsl.Document):
-    location_columns = jsl.ArrayField(unique_items=True, required=True)
+    location_columns = jsl.ArrayField(unique_items=True, required=True,
+                                      items=_valid_column_name_field)
+    type = jsl.StringField(enum=_data_types, required=True)
+    splitter = jsl.StringField()  # whether we need a special splitter
 
 
-class DataMetaJSLForTimeAware(DataMetaJSLBase):
-    type = jsl.StringField(enum=_time_aware_data_types, required=True)
-    split = jsl.BooleanField(required=True)
+class DataMetaJSLWithTimeStamp(DataMetaJSLBase):
+    with_timestamp = jsl.BooleanField(enum=[True], required=True)
+    timestamp_type = jsl.StringField(enum=['absolute', 'relative'], required=True)
+    timestamp_column = _valid_column_name_field
 
 
-class DataMetaJSLForTimeUnawareBase(DataMetaJSLBase):
-    split = jsl.BooleanField(enum=[True], required=True)  # must be split ahead.
+class DataMetaJSLWithoutTimeStamp(DataMetaJSLBase):
+    with_timestamp = jsl.BooleanField(enum=[False], required=True)
 
 
-class DataMetaJSLForFixed(DataMetaJSLForTimeUnawareBase):
-    type = jsl.StringField(enum=_time_unaware_fixed, required=True)
-    shape = jsl.ArrayField(items=jsl.IntField(minimum=1), required=True)  # specify the shape of each trial.
-    # if [], means scalar.
-    # I support multi dimension here so that for some high d time series, we can simply store them as fixed chunks,
-    # instead of a bunch of var len time series to save space.
+# schema for a single data source.
+class DataMetaJSL(DataMetaJSLWithTimeStamp, DataMetaJSLWithoutTimeStamp):
+    class Options:
+        inheritance_mode = jsl.ONE_OF
 
 
-class DataMetaJSLForFlexible(DataMetaJSLForTimeUnawareBase):
-    type = jsl.StringField(enum=_time_unaware_flexible, required=True)
+class _SubTrialEndTime(jsl.Document):
+    start_code = jsl.IntField(required=True)
+    end_time = jsl.NumberField(minimum=0, required=True)
 
 
-DataMetaJSL = jsl.OneOfField([jsl.DocumentField(DataMetaJSLForTimeAware),
-                              jsl.DocumentField(DataMetaJSLForFixed),
-                              jsl.DocumentField(DataMetaJSLForFlexible),
-                              ], required=True)
+class _SubTrialEndCode(jsl.Document):
+    start_code = jsl.IntField(required=True)
+    end_code = jsl.IntField(required=True)
+
+
+class _SubTrial(_SubTrialEndTime, _SubTrialEndCode):
+    class Options:
+        inheritance_mode = jsl.ONE_OF
+
+
+class _CDTTableImportParamsSchemaCommon(jsl.Document):
+    comment = jsl.StringField()
+    subtrials = jsl.ArrayField(items=jsl.DocumentField(_SubTrial), unique_items=True, required=True, min_items=1)
+    margin_before = jsl.NumberField(minimum=0, required=True)  # 0.3 by default in previous implementation.
+    margin_after = jsl.NumberField(minimum=0, required=True)  # 0.3 by default in previous implementation.
+    trial_to_condition_func = jsl.StringField(required=True)  # should be a function of both event codes and trial idx.
+
+
+class _CDTTableImportParamsSchemaEndTime(_CDTTableImportParamsSchemaCommon):
+    trial_start_code = jsl.IntField(required=True)
+    trial_end_time = jsl.NumberField(minimum=0, required=True)
+
+
+class _CDTTableImportParamsSchemaEndCode(_CDTTableImportParamsSchemaCommon):
+    trial_start_code = jsl.IntField(required=True)
+    trial_end_code = jsl.IntField(required=True)
+
+# you can also use oneOfField, but that won't give you `$schema` field when using .get_schema().
+class CDTTableImportParamsSchema(_CDTTableImportParamsSchemaEndTime,
+                                 _CDTTableImportParamsSchemaEndCode, _CDTTableImportParamsSchemaCommon):
+    class Options:
+        inheritance_mode = jsl.ONE_OF
+
+
+class ImportParamsJSL(jsl.Document):
+    """template for the whole import"""
+    notes = jsl.StringField(required=True)
+    data_meta = jsl.ArrayField(items=jsl.DocumentField(DataMetaJSL), unique_items=True, required=True)
+    event_splitting_params = jsl.DocumentField(CDTTableImportParamsSchema)
+
 
 if __name__ == '__main__':
     print(json.dumps(DataMetaJSL.get_schema(), indent=2))
+    print(json.dumps(ImportParamsJSL.get_schema(), indent=2))
