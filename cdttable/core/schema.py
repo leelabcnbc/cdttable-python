@@ -21,6 +21,7 @@ _valid_column_name_field = jsl.StringField(pattern=_valid_column_name_pattern, r
 
 
 class DataMetaJSLBase(jsl.Document):
+    schema_revision = jsl.IntField(enum=[1], required=True)  # in case of large change later.
     location_columns = jsl.ArrayField(unique_items=True, required=True,
                                       items=_valid_column_name_field)
     type = jsl.StringField(enum=_data_types, required=True)
@@ -75,6 +76,7 @@ class _CDTTableImportParamsSchemaEndCode(_CDTTableImportParamsSchemaCommon):
     trial_start_code = jsl.IntField(required=True)
     trial_end_code = jsl.IntField(required=True)
 
+
 # you can also use oneOfField, but that won't give you `$schema` field when using .get_schema().
 class CDTTableImportParamsSchema(_CDTTableImportParamsSchemaEndTime,
                                  _CDTTableImportParamsSchemaEndCode, _CDTTableImportParamsSchemaCommon):
@@ -84,6 +86,7 @@ class CDTTableImportParamsSchema(_CDTTableImportParamsSchemaEndTime,
 
 class ImportParamsJSL(jsl.Document):
     """template for the whole import"""
+    schema_revision = jsl.IntField(enum=[1], required=True)  # in case of large change later.
     notes = jsl.StringField(required=True)
     data_meta = jsl.ArrayField(items=jsl.DocumentField(DataMetaJSL), unique_items=True, required=True)
     event_splitting_params = jsl.DocumentField(CDTTableImportParamsSchema)
