@@ -78,7 +78,7 @@ class _CDTTableImportParamsSchemaEndCode(_CDTTableImportParamsSchemaCommon):
 
 
 # you can also use oneOfField, but that won't give you `$schema` field when using .get_schema().
-class CDTTableImportParamsSchema(_CDTTableImportParamsSchemaEndTime,
+class EventSplittingParamsSchema(_CDTTableImportParamsSchemaEndTime,
                                  _CDTTableImportParamsSchemaEndCode, _CDTTableImportParamsSchemaCommon):
     class Options:
         inheritance_mode = jsl.ONE_OF
@@ -89,7 +89,7 @@ class ImportParamsJSL(jsl.Document):
     schema_revision = jsl.IntField(enum=[1], required=True)  # in case of large change later.
     notes = jsl.StringField(required=True)
     data_meta = jsl.ArrayField(items=jsl.DocumentField(DataMetaJSL), unique_items=True, required=True)
-    event_splitting_params = jsl.DocumentField(CDTTableImportParamsSchema)
+    event_splitting_params = jsl.DocumentField(EventSplittingParamsSchema)
 
 
 if __name__ == '__main__':
