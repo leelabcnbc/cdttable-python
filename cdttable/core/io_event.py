@@ -133,6 +133,8 @@ def split_events(event_data: dict, event_splitting_params: dict, debug=False) ->
     trial_end_time = np.asarray([x['trial_end_time'] for x in split_result])
     condition_number = np.asarray([x['condition_number'] for x in split_result])
     trial_length = trial_end_time - trial_start_time
+
+    # normalize time w.r.t trial start.
     start_times -= trial_start_time[:, np.newaxis]
     end_times -= trial_start_time[:, np.newaxis]
 
