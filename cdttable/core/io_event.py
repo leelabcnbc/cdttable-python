@@ -31,7 +31,7 @@ def _get_times_subtrials(codes: np.ndarray, times: np.ndarray, params: dict) -> 
     for trial_info in params:
         start_time, end_time = _get_times_one_sub_trial(codes, times, trial_info)
         start_times.append(start_time)
-        end_times.append(end_times)
+        end_times.append(end_time)
     start_times = np.asarray(start_times)
     end_times = np.asarray(end_times)
     assert np.all(start_times <= end_times)
@@ -59,8 +59,7 @@ def _get_times_trial(codes: np.ndarray, times: np.ndarray,
     return trial_start_time, trial_end_time
 
 
-def _split_events_per_trial(codes: np.ndarray, times: np.ndarray,
-                            trial_to_condition_func, params: dict) -> dict:
+def _split_events_per_trial(t_idx, codes: np.ndarray, times: np.ndarray, params: dict) -> dict:
     """roughly a rewrite of import_one_trial_startstoptime
 
     Parameters
@@ -75,7 +74,8 @@ def _split_events_per_trial(codes: np.ndarray, times: np.ndarray,
 
     """
     codes, times = _check_input(codes, times)
-    cnd_number = trial_to_condition_func(codes).astype(np.int16, casting='safe', copy=False)
+    trial_to_condition_func = eval(params['trial_to_condition_func'], {}, {})
+    cnd_number = np.int16(trial_to_condition_func(codes, t_idx))
     assert np.isscalar(cnd_number)
 
     start_times, end_times = _get_times_subtrials(codes, times, params['subtrials'])
@@ -87,8 +87,8 @@ def _split_events_per_trial(codes: np.ndarray, times: np.ndarray,
     event_code_idx = np.logical_and(times >= trial_start_time, times <= trial_end_time)
 
     return {
-        'start_time': start_times,
-        'end_time': end_times,
+        'start_times': start_times,  # absolute
+        'end_times': end_times,  # absolute
         'trial_start_time': trial_start_time,
         'trial_end_time': trial_end_time,
         'event_times': times[event_code_idx],
@@ -118,13 +118,39 @@ def split_events(event_data: dict, event_splitting_params: dict, debug=False) ->
 
     # check that event_data is of good form.
     assert {'event_codes', 'event_times'} == set(event_data.keys())
-    assert len(event_data['event_codes']) == len(event_data['event_times'])
-
-    trial_to_condition_func = eval(event_splitting_params['trial_to_condition_func'], {}, {})
+    n_trial = len(event_data['event_codes'])
+    assert n_trial == len(event_data['event_times'])
 
     # no memmaping, since trials are usually short.
     pool = Parallel(n_jobs=-1, max_nbytes=None)
-    pool(delayed(_split_events_per_trial)(codes, times,
-                                          trial_to_condition_func,
-                                          event_splitting_params) for codes, times in zip(event_data['event_codes'],
-                                                                                          event_data['event_times']))
+    split_result = pool(
+        delayed(_split_events_per_trial)(t_idx, codes, times, event_splitting_params) for t_idx, (codes, times) in
+        enumerate(zip(event_data['event_codes'],
+                      event_data['event_times'])))
+    start_times = np.asarray([x['start_times'] for x in split_result])
+    end_times = np.asarray([x['end_times'] for x in split_result])
+    trial_start_time = np.asarray([x['trial_start_time'] for x in split_result])
+    trial_end_time = np.asarray([x['trial_end_time'] for x in split_result])
+    condition_number = np.asarray([x['condition_number'] for x in split_result])
+    trial_length = trial_end_time - trial_start_time
+    start_times -= trial_start_time[:, np.newaxis]
+    end_times -= trial_start_time[:, np.newaxis]
+
+    # create object arrays.
+    event_times = np.empty(n_trial, dtype=np.object_)
+    event_codes = np.empty(n_trial, dtype=np.object_)
+
+    for idx in range(n_trial):
+        event_times[idx] = split_result[idx]['event_times'] - trial_start_time[idx]
+        event_codes[idx] = split_result[idx]['event_codes']
+
+    return {
+        'start_times': start_times,
+        'end_times': end_times,
+        'trial_start_time': trial_start_time,
+        'trial_end_time': trial_end_time,
+        'condition_number': condition_number,
+        'trial_length': trial_length,
+        'event_times': event_times,
+        'event_codes': event_codes
+    }
