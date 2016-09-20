@@ -1,6 +1,5 @@
 import numpy as np
 from joblib import Parallel, delayed
-from .schema import validate, EventSplittingParamsSchema
 
 
 def _check_input(codes: np.ndarray, times: np.ndarray) -> tuple:
@@ -66,7 +65,6 @@ def _split_events_per_trial(t_idx, codes: np.ndarray, times: np.ndarray, params:
     ----------
     codes
     times
-    trial_to_condition_func
     params
 
     Returns
@@ -106,6 +104,7 @@ def split_events(event_data: dict, event_splitting_params: dict, n_jobs=-1, debu
     ----------
     event_data
     event_splitting_params
+    n_jobs
     debug: boolean
         only used in unit testing.
 
@@ -113,9 +112,6 @@ def split_events(event_data: dict, event_splitting_params: dict, n_jobs=-1, debu
     -------
 
     """
-    if debug:
-        assert validate(EventSplittingParamsSchema.get_schema(), event_splitting_params)
-
     # check that event_data is of good form.
     assert {'event_codes', 'event_times'} == set(event_data.keys())
     n_trial = len(event_data['event_codes'])
