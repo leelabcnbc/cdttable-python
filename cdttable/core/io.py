@@ -1,5 +1,5 @@
 from collections import OrderedDict
-from .schema import validate, ImportParamsJSL
+from .schema import validate, ImportParamsSchema
 from .io_event import split_events
 from .io_data import import_one_data_table
 
@@ -32,7 +32,7 @@ def import_one_session(session, import_params: dict):
     -------
     some (ordered?) dict object having all columns ready to be saved to hdf5 or mat
     """
-    assert validate(ImportParamsJSL.get_schema(), import_params)
+    assert validate(ImportParamsSchema.get_schema(), import_params)
 
     event_splitting_result = split_events(session['event_data'], import_params['event_splitting_params'])
     # first let's work on the time markers events.

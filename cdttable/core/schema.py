@@ -1,6 +1,5 @@
 import jsonschema
 import jsl
-import json
 from jsonschema import FormatChecker, Draft4Validator
 
 
@@ -21,7 +20,6 @@ _valid_column_name_field = jsl.StringField(pattern=_valid_column_name_pattern, r
 
 
 class DataMetaJSLBase(jsl.Document):
-    schema_revision = jsl.IntField(enum=[1], required=True)  # in case of large change later.
     location_columns = jsl.ArrayField(unique_items=True, required=True,
                                       items=_valid_column_name_field)
     type = jsl.StringField(enum=_data_types, required=True)
@@ -84,14 +82,9 @@ class EventSplittingParamsSchema(_CDTTableImportParamsSchemaEndTime,
         inheritance_mode = jsl.ONE_OF
 
 
-class ImportParamsJSL(jsl.Document):
+class ImportParamsSchema(jsl.Document):
     """template for the whole import"""
     schema_revision = jsl.IntField(enum=[1], required=True)  # in case of large change later.
     notes = jsl.StringField(required=True)
     data_meta = jsl.ArrayField(items=jsl.DocumentField(DataMetaJSL), unique_items=True, required=True)
     event_splitting_params = jsl.DocumentField(EventSplittingParamsSchema)
-
-
-if __name__ == '__main__':
-    print(json.dumps(DataMetaJSL.get_schema(), indent=2))
-    print(json.dumps(ImportParamsJSL.get_schema(), indent=2))

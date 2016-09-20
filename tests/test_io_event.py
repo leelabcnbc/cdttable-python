@@ -1,5 +1,9 @@
 import unittest
-from cdttable.core.io_event import (split_events)
+from cdttable.core.io_event import (split_events, _check_input,
+                                    _split_events_per_trial,
+                                    _get_times_one_sub_trial,
+                                    _get_times_subtrials,
+                                    _get_times_trial)
 from cdttable import test_util
 import numpy as np
 from itertools import product
@@ -10,7 +14,7 @@ class MyTestCase(unittest.TestCase):
     def setUp(self):
         test_util.reseed(42)
 
-    def test_split_event_all_codes(self):
+    def test_split_event_code_based(self):
         margin_before, margin_after = test_util.generate_margins()
         num_trial_list = [1, 50, 100, 150, None]
         num_pair_list = [1, 2, 3, 4, 5, None]
@@ -102,6 +106,180 @@ class MyTestCase(unittest.TestCase):
         correct_trial_length = correct_result['trial_end_time'] - correct_result['trial_start_time']
         self.assertEqual(correct_trial_length.shape, split_result['trial_length'].shape)
         self.assertTrue(np.allclose(correct_trial_length, split_result['trial_length']))
+
+    def test_check_input_wrong_dtype(self):
+        wrong_time_dtype = []
+
+        wrong_code_dtype = [np.float32, np.uint16, np.uint32, np.uint64, np.int32, np.int64]
+
+        for time_dtype in wrong_time_dtype:
+            codes, times = test_util.generate_codes_and_times()
+            times = times.astype(time_dtype)
+            with self.assertRaises(TypeError):
+                _check_input(codes, times)
+
+        for code_type in wrong_code_dtype:
+            codes, times = test_util.generate_codes_and_times()
+            codes = codes.astype(code_type)
+            with self.assertRaises(TypeError):
+                _check_input(codes, times)
+
+    def test_check_input_correct_dtype(self):
+        correct_time_dtype = [np.float32, np.float64,
+                              np.uint8, np.uint16, np.uint32, np.uint64,
+                              np.int8, np.int16, np.int32, np.int64]
+
+        correct_code_dtype = [np.uint8, np.int8]
+
+        # there's no assertNotRaises,
+        # <http://stackoverflow.com/questions/4319825/python-unittest-opposite-of-assertraises>
+        for time_dtype in correct_time_dtype:
+            codes, times = test_util.generate_codes_and_times()
+            times = times.astype(time_dtype)
+            _check_input(codes, times)
+
+        for code_type in correct_code_dtype:
+            codes, times = test_util.generate_codes_and_times()
+            codes = codes.astype(code_type)
+            _check_input(codes, times)
+
+    def test_get_times_one_sub_trial_correct(self):
+        time_delay_list = list(test_util.rng_state.rand(10) * 10) + [None]
+        for time_delay in time_delay_list:
+            with self.subTest(time_delay=time_delay):
+                codes, times = test_util.generate_codes_and_times()
+                result_ref = test_util.generate_start_and_stop_times(codes, times, num_pair=1, times_delay=[time_delay])
+                result_start, result_end = _get_times_one_sub_trial(codes, times, trial_info=result_ref['subtrials'][0])
+                self.assertTrue(np.array_equal(result_start, result_ref['start_times'][0]))
+                self.assertTrue(np.array_equal(result_end, result_ref['end_times'][0]))
+
+    def test_get_times_one_sub_trial_wrong(self):
+        time_delay_list = [1, None]
+        for time_delay in time_delay_list:
+            with self.subTest(time_delay=time_delay):
+                codes, times = test_util.generate_codes_and_times()
+                result_ref = test_util.generate_start_and_stop_times(codes, times, num_pair=1, times_delay=[time_delay])
+                trial_info = result_ref['subtrials'][0]
+                if time_delay is not None:
+                    del trial_info['end_time']
+                    trial_info['end_Time'] = time_delay
+                else:
+                    del trial_info['end_code']
+                    trial_info['end_Code'] = 1
+                with self.assertRaises(RuntimeError):
+                    _get_times_one_sub_trial(codes, times, trial_info=trial_info)
+
+    def test_get_times_sub_trials(self):
+        for _ in range(100):
+            codes, times = test_util.generate_codes_and_times()
+            result_ref = test_util.generate_start_and_stop_times(codes, times)
+            with self.subTest(times_delay=result_ref['times_delay']):
+                result_start, result_end = _get_times_subtrials(codes, times, params=result_ref['subtrials'])
+                self.assertTrue(np.array_equal(result_start, result_ref['start_times']))
+                self.assertTrue(np.array_equal(result_end, result_ref['end_times']))
+
+    def test_get_times_trial(self):
+        trial_type_list = ['simple', 'code', 'time']
+        for trial_type in trial_type_list:
+            for _ in range(50):
+                if test_util.rng_state.rand() > 0.5:
+                    margin_before, margin_after = test_util.generate_margins()
+                else:
+                    margin_before, margin_after = 0, 0
+                codes, times = test_util.generate_codes_and_times()
+                result_ref = test_util.generate_start_and_stop_times(codes, times)
+                params = {'margin_before': float(margin_before), 'margin_after': float(margin_after)}
+                trial_start_code = None
+                trial_end_code = None
+                trial_end_time = None
+                if trial_type != 'simple':
+                    before_codes = codes[:list(codes).index(result_ref['subtrials'][0]['start_code']) + 1]
+                    after_codes = codes[times >= result_ref['end_times'][-1]]
+                    if after_codes.size == 0:  # hack. this is impossible in full example.
+                        after_codes = [codes[-1]]
+                    # choose a start code up to start_codes
+                    trial_start_code = test_util.rng_state.choice(before_codes)
+                    trial_start_time_abs = times[list(codes).index(trial_start_code)]
+                    params['trial_start_code'] = trial_start_code
+                    if trial_type == 'code':
+                        trial_end_code = test_util.rng_state.choice(after_codes)
+                        params['trial_end_code'] = trial_end_code
+                    elif trial_type == 'time':
+                        # choose a time that is later than end_times
+                        trial_end_time_abs = test_util.rng_state.rand() + result_ref['end_times'][-1]
+                        trial_end_time = trial_end_time_abs - trial_start_time_abs
+                        params['trial_end_time'] = trial_end_time
+
+                result_ref_trial = test_util.generate_trial_start_and_stop_times(codes, times,
+                                                                                 result_ref['start_times'],
+                                                                                 result_ref['end_times'],
+                                                                                 margin_before=margin_before,
+                                                                                 margin_after=margin_after,
+                                                                                 trial_param_type=trial_type,
+                                                                                 start_code=trial_start_code,
+                                                                                 end_code=trial_end_code,
+                                                                                 end_time=trial_end_time
+                                                                                 )
+                # generate some start code and stop code my self.
+                with self.subTest(trial_type=trial_type, params=params):
+                    result_start, result_end = _get_times_trial(codes, times,
+                                                                result_ref['start_times'],
+                                                                result_ref['end_times'],
+                                                                params=params)
+                    self.assertTrue(np.allclose(result_start, result_ref_trial[0]))
+                    self.assertTrue(np.allclose(result_end, result_ref_trial[1]))
+
+    def test_get_times_trial_wrong(self):
+        trial_type_list = ['simple', 'code', 'time']
+        for trial_type in trial_type_list:
+            for _ in range(50):
+                if test_util.rng_state.rand() > 0.5:
+                    margin_before, margin_after = test_util.generate_margins()
+                else:
+                    margin_before, margin_after = 0, 0
+                codes, times = test_util.generate_codes_and_times()
+                result_ref = test_util.generate_start_and_stop_times(codes, times)
+                params = {'margin_before': float(margin_before), 'margin_after': float(margin_after)}
+                trial_start_code = None
+                trial_end_code = None
+                trial_end_time = None
+                if trial_type != 'simple':
+                    before_codes = codes[:list(codes).index(result_ref['subtrials'][0]['start_code']) + 1]
+                    after_codes = codes[times >= result_ref['end_times'][-1]]
+                    if after_codes.size == 0:  # hack. this is impossible in full example.
+                        after_codes = [codes[-1]]
+                    # choose a start code up to start_codes
+                    trial_start_code = test_util.rng_state.choice(before_codes)
+                    trial_start_time_abs = times[list(codes).index(trial_start_code)]
+                    params['trial_start_code'] = trial_start_code
+                    if trial_type == 'code':
+                        trial_end_code = test_util.rng_state.choice(after_codes)
+                        params['trial_end_codE'] = trial_end_code
+                    elif trial_type == 'time':
+                        # choose a time that is later than end_times
+                        trial_end_time_abs = test_util.rng_state.rand() + result_ref['end_times'][-1]
+                        trial_end_time = trial_end_time_abs - trial_start_time_abs
+                        params['trial_end_timE'] = trial_end_time
+
+                result_ref_trial = test_util.generate_trial_start_and_stop_times(codes, times,
+                                                                                 result_ref['start_times'],
+                                                                                 result_ref['end_times'],
+                                                                                 margin_before=margin_before,
+                                                                                 margin_after=margin_after,
+                                                                                 trial_param_type=trial_type,
+                                                                                 start_code=trial_start_code,
+                                                                                 end_code=trial_end_code,
+                                                                                 end_time=trial_end_time
+                                                                                 )
+                # generate some start code and stop code my self.
+                with self.subTest(trial_type=trial_type, params=params):
+                    if trial_type == 'simple':
+                        _get_times_trial(codes, times, result_ref['start_times'], result_ref['end_times'],
+                                         params=params)
+                    else:
+                        with self.assertRaises(RuntimeError):
+                            _get_times_trial(codes, times, result_ref['start_times'], result_ref['end_times'],
+                                             params=params)
 
 
 if __name__ == '__main__':
