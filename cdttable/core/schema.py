@@ -19,11 +19,27 @@ _valid_column_name_pattern = '^[0-9a-z_\\-]+$'
 _valid_column_name_field = jsl.StringField(pattern=_valid_column_name_pattern, required=True)
 
 
-class DataMetaJSLBase(jsl.Document):
+class DataMetaJSLBaseNoSplitter(jsl.Document):
     location_columns = jsl.ArrayField(unique_items=True, required=True,
                                       items=_valid_column_name_field)
     type = jsl.StringField(enum=_data_types, required=True)
-    splitter = jsl.StringField()  # whether we need a special splitter
+    additional_parameters = jsl.DictField(required=True)
+
+
+class DataMetaJSLBaseWithSplitter(jsl.Document):
+    # I can't inherit from DataMetaJSLBaseNoSplitter, because some inheritance issue
+    # <http://stackoverflow.com/questions/29214888/typeerror-cannot-create-a-consistent-method-resolution-order-mro>
+    location_columns = jsl.ArrayField(unique_items=True, required=True,
+                                      items=_valid_column_name_field)
+    type = jsl.StringField(enum=_data_types, required=True)
+    splitter = jsl.StringField(required=True)  # whether we need a special splitter
+    splitter_params = jsl.DictField(required=True)
+    additional_parameters = jsl.DictField(required=True)
+
+
+class DataMetaJSLBase(DataMetaJSLBaseNoSplitter, DataMetaJSLBaseWithSplitter):
+    class Options:
+        inheritance_mode = jsl.ONE_OF
 
 
 class DataMetaJSLWithTimeStamp(DataMetaJSLBase):

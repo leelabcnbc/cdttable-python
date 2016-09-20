@@ -1,95 +1,51 @@
-from collections import OrderedDict
 from joblib import Parallel, delayed
 import numpy as np
+from . import root_package_spec
 
 
-def unique_rows(a):
-    assert a.ndim == 2
-    # from http://stackoverflow.com/questions/16970982/find-unique-rows-in-numpy-array
-    if a.size > 0:
-        result = np.vstack({tuple(row) for row in a})
+def _import_one_data_table_split(data_raw, data_meta, event_info):
+    # optionally, we should split the data.
+    if 'splitter' in data_meta:
+        code_to_run = 'from {pkg}.splitter.{splitter_name} import run'.format(pkg=root_package_spec,
+                                                                              splitter_name=data_meta['splitter'])
+        locals_query = {}
+        exec(code_to_run, {}, locals_query)
+        spltter_instance = locals_query['run']
+        data_ready_to_do = spltter_instance(data_raw, event_info, data_meta['splitter_params'])
     else:
-        result = a
+        data_ready_to_do = data_raw
+
+    return data_ready_to_do
+
+
+def _import_one_data_table_trial_level(data_ready_to_do, data_meta, event_info):
+    if data_meta['with_timestamp']:
+        timestamp_type = data_meta['timestamp_type']
+        timestamp_column = data_meta['timestamp_column']
+        if timestamp_type == 'absolute':
+            start_time_absolute = data_ready_to_do[timestamp_column]
+            start_time_relative = start_time_absolute - event_info['trial_start_time']
+        else:
+            start_time_relative = data_ready_to_do[timestamp_column]
+            start_time_absolute = start_time_relative + event_info['trial_start_time']
+        result = {
+            'start_time_absolute': start_time_absolute,
+            'start_time_relative': start_time_relative,
+        }
+    else:
+        result = {}
     return result
 
 
-def import_one_data_table(data_raw, data_meta, event_info, import_params):
-    data_type = data_meta['type']
-    # do preparation for all data types.
-    if data_type == 'point_process_1d':
-        splitter = splitter_point_process
-    else:
-        raise ValueError('not supported data type: {}'.format(data_type))
-
-    if not data_meta['split']:
-        # ok, split the data myself.
-        splitted_data = splitter(data_raw, data_meta, event_info, import_params)
-    else:
-        splitted_data = data_raw
-
-    result = OrderedDict()
-    # then combine them.
-    if not data_meta['location_columns']:
-        # just a np array always of shape (n_trial, ... )
-        values = splitted_data['values']
-    else:
-        # the results' shape[0] is number of all occurring trials and locations.
-        locations = np.concatenate([x['locations'] for x in splitted_data], axis=0)
-        values = _concatenate_trials_with_locations(splitted_data, data_type)
-        result[data_meta['values_name']] = values
-
-    return splitted_data
+def _import_one_data_table_location_level(data_ready_to_do, data_meta, event_info):
+    return {}
 
 
-def _concatenate_trials_with_locations(splitted_data, data_type):
-    table_length = sum([len(x) for x in splitted_data])
-
-    if data_type == 'fixed':
-        # easy, simply combine them.
-        values = np.concatenate([x for x in splitted_data], axis=0)
-    else:
-        # use a object type.
-        dtype_to_use = np.object_
-        values = np.empty(shape=(table_length,), dtype=np.object_)
-        # fill in.
-
-
-def splitter_point_process(data_raw, data_meta, event_info, import_params):
-    timestamps = data_raw['values']
-    assert timestamps.ndim == 1
-
-    # no matter whether timestamps is empty or not, there's always possibility to get empty stuff.
-    num_trial = event_info['num_trial']
-    if data_meta['location_columns']:
-        locations = np.concatenate([data_raw[x] for x in data_meta['location_columns']], axis=1)
-    else:
-        locations = None
-
-    # do a par for loop, over each trial
-    timestamps_per_trial = Parallel(n_jobs=import_params['n_jobs'],
-                                    verbose=5)(delayed(_splitter_pp_inner)(timestamps,
-                                                                           locations,
-                                                                           event_info['start_times'],
-                                                                           event_info['stop_times'],
-                                                                           idx) for idx in range(num_trial))
-
-    return timestamps_per_trial
-
-
-def _splitter_pp_inner(timestamps, locations, start_times, stop_times, idx):
-    start_time = start_times[idx]
-    stop_time = stop_times[idx]
-    valid_idx = np.logical_and(timestamps > start_time, timestamps < stop_time)
-    spike_times = timestamps[valid_idx]
-    if locations is not None:
-        # we need to sort all valid indices according to their locations.
-        locations_this_trial = locations[valid_idx]
-        locations_this_trial_unique = unique_rows(locations_this_trial)
-        spike_times_list = []
-        for location_this_trial_unique_this in locations_this_trial_unique:
-            spikes_this_location = spike_times[np.all(location_this_trial_unique_this == locations_this_trial, axis=1)]
-            spike_times_list.append(spikes_this_location)
-        return {'locations': locations_this_trial,
-                'values': spike_times_list}
-    else:
-        return {'values': spike_times}
+def import_one_data_table(data_raw, data_meta, event_info):
+    data_ready_to_do = _import_one_data_table_split(data_raw, data_meta, event_info)
+    # work out the trial_level stuff
+    trial_level_data = _import_one_data_table_trial_level(data_ready_to_do, data_meta, event_info)
+    # work out the things at location level.
+    location_level_data = _import_one_data_table_location_level(data_ready_to_do, data_meta, event_info)
+    # no overlap.
+    assert set(trial_level_data.keys()) & set(location_level_data.keys()) == set()
