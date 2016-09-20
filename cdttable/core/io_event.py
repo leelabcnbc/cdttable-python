@@ -2,14 +2,48 @@ import numpy as np
 from joblib import Parallel, delayed
 
 
-def _check_input(codes: np.ndarray, times: np.ndarray) -> tuple:
-    assert isinstance(codes, np.ndarray) and isinstance(times, np.ndarray)
+def _check_input(codes, times) -> tuple:
+    # I don't want to work with subclass of ndarray, as subclasses actually have some undesired effects.
+    codes = np.asarray(codes)
+    times = np.asarray(times)
     assert codes.shape == times.shape
     assert codes.ndim == 1
 
     times = times.astype(np.float64, copy=False, casting='safe')
     codes = codes.astype(np.int16, copy=False, casting='safe')
     return codes, times
+
+
+def _check_output(result: dict) -> None:
+    """
+
+    Parameters
+    ----------
+    result
+
+    Returns
+    -------
+result =  {
+        'start_times': start_times,
+        'end_times': end_times,
+        'trial_start_time': trial_start_time,
+        'trial_end_time': trial_end_time,
+        'condition_number': condition_number,
+        'trial_length': trial_length,
+        'event_times': event_times,
+        'event_codes': event_codes
+    }
+    """
+    assert result['start_times'].dtype == np.float64
+    assert result['end_times'].dtype == np.float64
+    assert result['trial_start_time'].dtype == np.float64
+    assert result['trial_end_time'].dtype == np.float64
+    assert result['condition_number'].dtype == np.int16
+    assert result['trial_length'].dtype == np.float64
+    for x in result['event_times']:
+        assert x.dtype == np.float64
+    for x in result['event_codes']:
+        assert x.dtype == np.int16
 
 
 def _get_times_one_sub_trial(codes: np.ndarray, times: np.ndarray, trial_info: dict) -> tuple:
@@ -79,6 +113,7 @@ def _split_events_per_trial(t_idx, codes: np.ndarray, times: np.ndarray, params:
     start_times, end_times = _get_times_subtrials(codes, times, params['subtrials'])
     trial_start_time, trial_end_time = _get_times_trial(codes, times, start_times, end_times, params)
 
+    # this is due to ill design of trial window and subtrial window due to human error.
     assert np.all(trial_start_time <= start_times)
     assert np.all(trial_end_time >= end_times)
 
@@ -95,7 +130,7 @@ def _split_events_per_trial(t_idx, codes: np.ndarray, times: np.ndarray, params:
     }
 
 
-def split_events(event_data: dict, event_splitting_params: dict, n_jobs=-1, debug=False) -> dict:
+def split_events(event_data: dict, event_splitting_params: dict, n_jobs=-1) -> dict:
     """extract event codes according to event splitting params.
     basically, this code replicates half the of `+cdttable/import_one_trial.m` in the original matlab package.
     the other half should go to the splitter.
@@ -105,8 +140,6 @@ def split_events(event_data: dict, event_splitting_params: dict, n_jobs=-1, debu
     event_data
     event_splitting_params
     n_jobs
-    debug: boolean
-        only used in unit testing.
 
     Returns
     -------
@@ -142,7 +175,7 @@ def split_events(event_data: dict, event_splitting_params: dict, n_jobs=-1, debu
         event_times[idx] = split_result[idx]['event_times'] - trial_start_time[idx]
         event_codes[idx] = split_result[idx]['event_codes']
 
-    return {
+    result = {
         'start_times': start_times,
         'end_times': end_times,
         'trial_start_time': trial_start_time,
@@ -152,3 +185,7 @@ def split_events(event_data: dict, event_splitting_params: dict, n_jobs=-1, debu
         'event_times': event_times,
         'event_codes': event_codes
     }
+
+    _check_output(result)
+
+    return result
