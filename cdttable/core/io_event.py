@@ -23,23 +23,13 @@ def _check_output(result: dict) -> None:
 
     Returns
     -------
-result =  {
-        'start_times': start_times,
-        'end_times': end_times,
-        'trial_start_time': trial_start_time,
-        'trial_end_time': trial_end_time,
-        'condition_number': condition_number,
-        'trial_length': trial_length,
-        'event_times': event_times,
-        'event_codes': event_codes
-    }
+
     """
-    assert result['start_times'].dtype == np.float64
-    assert result['end_times'].dtype == np.float64
-    assert result['trial_start_time'].dtype == np.float64
-    assert result['trial_end_time'].dtype == np.float64
+    float64_set = {'start_times', 'end_times',
+                   'trial_start_time', 'trial_end_time', 'trial_length'}
+    for x in float64_set:
+        assert result[x].dtype == np.float64
     assert result['condition_number'].dtype == np.int16
-    assert result['trial_length'].dtype == np.float64
     for x in result['event_times']:
         assert x.dtype == np.float64
     for x in result['event_codes']:
@@ -130,6 +120,35 @@ def _split_events_per_trial(t_idx, codes: np.ndarray, times: np.ndarray, params:
     }
 
 
+def _assemble_result(split_result, n_trial):
+    fields_to_be_ndarray = {
+        'start_times', 'end_times', 'trial_start_time', 'trial_end_time', 'condition_number'
+    }
+
+    result = {}
+    for field in fields_to_be_ndarray:
+        result[field] = np.asarray([x[field] for x in split_result])
+
+    result['trial_length'] = result['trial_end_time'] - result['trial_start_time']
+
+    # normalize time w.r.t trial start.
+    result['start_times'] -= result['trial_start_time'][:, np.newaxis]
+    result['end_times'] -= result['trial_start_time'][:, np.newaxis]
+
+    # create object arrays.
+    event_times = np.empty(n_trial, dtype=np.object_)
+    event_codes = np.empty(n_trial, dtype=np.object_)
+
+    for idx in range(n_trial):
+        event_times[idx] = split_result[idx]['event_times'] - result['trial_start_time'][idx]
+        event_codes[idx] = split_result[idx]['event_codes']
+
+    result['event_times'] = event_times
+    result['event_codes'] = event_codes
+
+    return result
+
+
 def split_events(event_data: dict, event_splitting_params: dict, n_jobs=-1) -> dict:
     """extract event codes according to event splitting params.
     basically, this code replicates half the of `+cdttable/import_one_trial.m` in the original matlab package.
@@ -149,6 +168,8 @@ def split_events(event_data: dict, event_splitting_params: dict, n_jobs=-1) -> d
     assert {'event_codes', 'event_times'} == set(event_data.keys())
     n_trial = len(event_data['event_codes'])
     assert n_trial == len(event_data['event_times'])
+    if n_trial == 0:
+        raise ValueError('at least one trial!')
 
     # no memmaping, since trials are usually short.
     pool = Parallel(n_jobs=n_jobs, max_nbytes=None)
@@ -156,36 +177,8 @@ def split_events(event_data: dict, event_splitting_params: dict, n_jobs=-1) -> d
         delayed(_split_events_per_trial)(t_idx, codes, times, event_splitting_params) for t_idx, (codes, times) in
         enumerate(zip(event_data['event_codes'],
                       event_data['event_times'])))
-    start_times = np.asarray([x['start_times'] for x in split_result])
-    end_times = np.asarray([x['end_times'] for x in split_result])
-    trial_start_time = np.asarray([x['trial_start_time'] for x in split_result])
-    trial_end_time = np.asarray([x['trial_end_time'] for x in split_result])
-    condition_number = np.asarray([x['condition_number'] for x in split_result])
-    trial_length = trial_end_time - trial_start_time
 
-    # normalize time w.r.t trial start.
-    start_times -= trial_start_time[:, np.newaxis]
-    end_times -= trial_start_time[:, np.newaxis]
-
-    # create object arrays.
-    event_times = np.empty(n_trial, dtype=np.object_)
-    event_codes = np.empty(n_trial, dtype=np.object_)
-
-    for idx in range(n_trial):
-        event_times[idx] = split_result[idx]['event_times'] - trial_start_time[idx]
-        event_codes[idx] = split_result[idx]['event_codes']
-
-    result = {
-        'start_times': start_times,
-        'end_times': end_times,
-        'trial_start_time': trial_start_time,
-        'trial_end_time': trial_end_time,
-        'condition_number': condition_number,
-        'trial_length': trial_length,
-        'event_times': event_times,
-        'event_codes': event_codes
-    }
-
+    result = _assemble_result(split_result, n_trial)
     _check_output(result)
 
     return result
