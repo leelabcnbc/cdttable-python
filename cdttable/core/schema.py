@@ -22,6 +22,7 @@ _valid_column_name_field = jsl.StringField(pattern=_valid_column_name_pattern, r
 class DataMetaJSLBaseNoSplitter(jsl.Document):
     location_columns = jsl.ArrayField(unique_items=True, required=True,
                                       items=_valid_column_name_field)
+    value_column = _valid_column_name_field
     type = jsl.StringField(enum=_data_types, required=True)
     additional_parameters = jsl.DictField(required=True)
 
@@ -31,6 +32,7 @@ class DataMetaJSLBaseWithSplitter(jsl.Document):
     # <http://stackoverflow.com/questions/29214888/typeerror-cannot-create-a-consistent-method-resolution-order-mro>
     location_columns = jsl.ArrayField(unique_items=True, required=True,
                                       items=_valid_column_name_field)
+    value_column = _valid_column_name_field
     type = jsl.StringField(enum=_data_types, required=True)
     splitter = jsl.StringField(required=True)  # whether we need a special splitter
     splitter_params = jsl.DictField(required=True)
