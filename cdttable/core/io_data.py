@@ -42,6 +42,7 @@ def _import_one_data_table_trial_level(data_ready_to_do, data_meta, event_info):
 
 def _import_one_data_table_location_level_check_input(data_ready_to_do, data_meta, n_trial):
     data_type = data_meta['type']
+    assert data_type in {'fixed', 'variable_1d'}
 
     # make sure same number as n_trial
     value_column = data_ready_to_do[data_meta['value_column']]
@@ -64,7 +65,8 @@ def _import_one_data_table_location_level_check_input(data_ready_to_do, data_met
     num_location_list = []
     for value_column_this_trial, *location_column_this_trial_list in zip(*trial_iter):
         if location_column_this_trial_list:
-            # TODO: think about what happens when this is empty. (n_locations_this_trial=0)
+            # think about what happens when this is empty. (n_locations_this_trial=0)
+            # it's tested in test_io_data.
             n_locations_this_trial = len(value_column_this_trial)
             for x in location_column_this_trial_list:
                 assert x.shape == (n_locations_this_trial,)
