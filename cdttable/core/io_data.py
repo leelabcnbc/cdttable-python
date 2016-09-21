@@ -93,8 +93,10 @@ def _import_one_data_table_location_level(data_ready_to_do, data_meta, event_inf
     -------
 
     """
-    n_trial = event_info['event_codes']
+    n_trial = len(event_info['event_codes'])
     value_column_name = data_meta['value_column']
+    value_column_save_name = 'value_{}'.format(value_column_name)
+    value_column = data_ready_to_do[value_column_name]
     num_location_list = _import_one_data_table_location_level_check_input(data_ready_to_do, data_meta, n_trial)
     # ok. now time to combine them.
     result = {}
@@ -104,20 +106,21 @@ def _import_one_data_table_location_level(data_ready_to_do, data_meta, event_inf
         trial_idx = np.concatenate([np.full(x, idx, dtype=np.int64) for idx, x in enumerate(num_location_list)])
         for idx, x in enumerate(data_meta['location_columns']):
             result['location_{}_{}'.format(idx, x)] = np.concatenate(data_ready_to_do[x], axis=0)
-        result['values_{}'.format(value_column_name)] = np.concatenate(data_ready_to_do[value_column_name], axis=0)
+        result[value_column_save_name] = np.concatenate(value_column, axis=0)
     else:
         trial_idx = np.arange(n_trial, dtype=np.int64)
         # only work on values
         if data_meta['type'] == 'fixed':
             # so we can simply use asarray
-            values_to_save = np.asarray(data_ready_to_do[value_column_name])
+            values_to_save = np.asarray(value_column)
         else:
             # explicitly create array first so it won't get converted into something else.
             values_to_save = np.empty(n_trial, dtype=np.object_)
-            for t_idx, value_this in enumerate(data_ready_to_do[value_column_name]):
+            for t_idx, value_this in enumerate(value_column):
                 values_to_save[t_idx] = value_this
-        result['values_{}'.format(value_column_name)] = values_to_save
+        result[value_column_save_name] = values_to_save
         # ok time to deal with values.
+    result['trial_idx'] = trial_idx
 
     return result
 

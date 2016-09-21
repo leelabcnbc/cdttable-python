@@ -30,6 +30,13 @@ def generate_random_times(n_trial=None, max_length=1000, be_sorted=True):
     return result
 
 
+def generate_random_shape(ndim=None):
+    if ndim is None:
+        ndim = rng_state.randint(0, 5)
+    shape = tuple(rng_state.randint(1, 10, size=ndim))  # also works when ndim == 0
+    return shape
+
+
 def generate_codes_and_times(num_code=None,
                              event_codes_per_trial=None, max_trial_length=1.0):
     if num_code is None:
