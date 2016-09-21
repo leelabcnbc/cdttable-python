@@ -1,15 +1,40 @@
 import numpy as np
 import numpy.random
+from .core import schema
+import random
 
 rng_state = numpy.random.RandomState(seed=42)
 
 
 def reseed(seed=None):
     rng_state.seed(seed)
+    random.seed(seed)
 
 
 def generate_margins(max_margin=1.0):
     return rng_state.rand(2) * max_margin
+
+
+def generate_random_column_name():
+    name_len = rng_state.randint(1, 10)
+    return ''.join(random.choice(schema._valid_column_name_chars) for _ in range(name_len))
+
+
+def generate_random_times(n_trial=None, max_length=1000, be_sorted=True):
+    if n_trial is None:
+        n_trial = rng_state.randint(1, 500 + 1)
+    result = rng_state.rand(n_trial) * max_length
+    if be_sorted:
+        result = np.sort(result)
+
+    return result
+
+
+def generate_random_shape(ndim=None):
+    if ndim is None:
+        ndim = rng_state.randint(0, 5)
+    shape = tuple(rng_state.randint(1, 10, size=ndim))  # also works when ndim == 0
+    return shape
 
 
 def generate_codes_and_times(num_code=None,
