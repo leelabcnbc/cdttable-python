@@ -21,12 +21,16 @@ def _import_one_data_table_trial_level(data_ready_to_do, data_meta, event_info):
     if data_meta['with_timestamp']:
         timestamp_type = data_meta['timestamp_type']
         timestamp_column = data_meta['timestamp_column']
+        trial_start_time = event_info['trial_start_time']
         if timestamp_type == 'absolute':
             start_time_absolute = data_ready_to_do[timestamp_column]
-            start_time_relative = start_time_absolute - event_info['trial_start_time']
-        else:
+            start_time_relative = start_time_absolute - trial_start_time
+        elif timestamp_type == 'relative':
             start_time_relative = data_ready_to_do[timestamp_column]
-            start_time_absolute = start_time_relative + event_info['trial_start_time']
+            start_time_absolute = start_time_relative + trial_start_time
+        else:
+            raise ValueError('no such timestamp type supported!')
+        assert start_time_absolute.shape == start_time_relative.shape == trial_start_time.shape
         result = {
             'start_time_absolute': start_time_absolute,
             'start_time_relative': start_time_relative,

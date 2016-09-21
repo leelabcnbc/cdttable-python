@@ -1,7 +1,7 @@
 import jsonschema
 import jsl
 from jsonschema import FormatChecker, Draft4Validator
-
+import string
 
 def validate(schema, record):
     jsonschema.validate(instance=record, schema=schema, format_checker=FormatChecker(),
@@ -15,6 +15,7 @@ _data_types = ('fixed',
                )
 
 _valid_column_name_pattern = '^[0-9a-z_\\-]+$'
+_valid_column_name_chars = string.ascii_lowercase + string.digits + '-_'
 
 _valid_column_name_field = jsl.StringField(pattern=_valid_column_name_pattern, required=True)
 

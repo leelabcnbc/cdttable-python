@@ -168,8 +168,7 @@ def split_events(event_data: dict, event_splitting_params: dict, n_jobs=-1) -> d
     assert {'event_codes', 'event_times'} == set(event_data.keys())
     n_trial = len(event_data['event_codes'])
     assert n_trial == len(event_data['event_times'])
-    if n_trial == 0:
-        raise ValueError('at least one trial!')
+    assert n_trial >= 1
 
     # no memmaping, since trials are usually short.
     pool = Parallel(n_jobs=n_jobs, max_nbytes=None)
